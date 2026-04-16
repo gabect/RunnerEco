@@ -104,17 +104,16 @@
     const player = {
       x: 130,
       y: 0,
-      w: 76,
-      h: 96,
-      normalH: 96,
-      slideH: 56,
+      w: 74,
+      h: 98,
+      normalH: 98,
+      slideH: 54,
       vy: 0,
       jumpForce: -15,
       grounded: true,
       sliding: false,
       slideTimer: 0,
       maxSlideTime: 28,
-      animTime: 0,
       frameIndex: 0,
       frameTimer: 0,
       frameDuration: 7,
@@ -127,42 +126,48 @@
     let dust = [];
     let groundMarks = createGroundMarks();
 
-    // IMPORTANTE:
-    // Guarda tu spritesheet como "player_sheet.png" en la misma carpeta del HTML.
-    // Esta configuración usa exactamente la distribución que indicaste:
-    // fila 1 = caminar, fila 2 = correr, fila 3 = deslizar, fila 4 = salto vertical.
-    // Si la hoja tiene fondo cuadriculado o texto incrustado, también se verá en el juego.
     const spriteSheet = new Image();
-    spriteSheet.src = 'player_sheet.png';
+    spriteSheet.src = 'assets/player_sheet.png';
     let spriteReady = false;
     spriteSheet.onload = () => { spriteReady = true; };
     spriteSheet.onerror = () => { spriteReady = false; };
 
     const spriteConfig = {
-      drawScale: 0.56,
+      drawScale: 0.50,
+
       walk: [
-        { x: 45,  y: 45,  w: 160, h: 240 },
-        { x: 250, y: 45,  w: 160, h: 240 },
-        { x: 455, y: 45,  w: 160, h: 240 },
-        { x: 660, y: 45,  w: 160, h: 240 },
-        { x: 860, y: 45,  w: 160, h: 240 },
+        { x: 35,  y: 30,  w: 150, h: 250 },
+        { x: 230, y: 30,  w: 150, h: 250 },
+        { x: 430, y: 30,  w: 170, h: 250 },
+        { x: 635, y: 30,  w: 170, h: 250 },
+        { x: 835, y: 30,  w: 170, h: 250 },
       ],
+
       run: [
-        { x: 45,  y: 395, w: 170, h: 235 },
-        { x: 245, y: 395, w: 170, h: 235 },
-        { x: 450, y: 395, w: 170, h: 235 },
-        { x: 655, y: 395, w: 170, h: 235 },
-        { x: 855, y: 395, w: 170, h: 235 },
+        { x: 25,  y: 340, w: 180, h: 255 },
+        { x: 225, y: 340, w: 180, h: 255 },
+        { x: 430, y: 340, w: 180, h: 255 },
+        { x: 635, y: 340, w: 180, h: 255 },
+        { x: 835, y: 340, w: 180, h: 255 },
       ],
+
+      jumpForward: [
+        { x: 40,  y: 660, w: 180, h: 210 },
+        { x: 250, y: 660, w: 180, h: 210 },
+        { x: 465, y: 660, w: 180, h: 210 },
+        { x: 675, y: 660, w: 180, h: 210 },
+      ],
+
       slide: [
-        { x: 45,  y: 790, w: 190, h: 190 },
-        { x: 265, y: 790, w: 190, h: 190 },
-        { x: 490, y: 790, w: 190, h: 190 },
-        { x: 720, y: 790, w: 190, h: 190 },
+        { x: 35,  y: 975, w: 220, h: 175 },
+        { x: 255, y: 975, w: 220, h: 175 },
+        { x: 480, y: 975, w: 220, h: 175 },
+        { x: 705, y: 975, w: 220, h: 175 },
       ],
-      jump: [
-        { x: 300, y: 1110, w: 190, h: 260 },
-        { x: 550, y: 1110, w: 190, h: 260 },
+
+      jumpUp: [
+        { x: 255, y: 1265, w: 170, h: 235 },
+        { x: 565, y: 1265, w: 170, h: 235 },
       ]
     };
 
@@ -200,7 +205,7 @@
       world.spawnTimer = 0;
       world.nextSpawnIn = 75 + Math.random() * 35;
 
-      player.w = 76;
+      player.w = 74;
       player.h = player.normalH;
       player.y = world.groundY - player.h;
       player.vy = 0;
@@ -221,9 +226,13 @@
         resetGame();
         return;
       }
+
       if (player.grounded && !player.sliding) {
         player.vy = player.jumpForce;
         player.grounded = false;
+        player.frameIndex = 0;
+        player.frameTimer = 0;
+
         for (let i = 0; i < 7; i++) {
           dust.push({
             x: player.x + player.w * 0.4,
@@ -242,11 +251,14 @@
         resetGame();
         return;
       }
+
       if (!player.grounded || player.sliding) return;
       player.sliding = true;
       player.slideTimer = player.maxSlideTime;
       player.h = player.slideH;
       player.y = world.groundY - player.h;
+      player.frameIndex = 0;
+      player.frameTimer = 0;
     }
 
     function stopSlide() {
@@ -254,6 +266,8 @@
       player.sliding = false;
       player.h = player.normalH;
       player.y = world.groundY - player.h;
+      player.frameIndex = 0;
+      player.frameTimer = 0;
     }
 
     function spawnObstacle() {
@@ -300,7 +314,7 @@
     }
 
     function getAnimationName() {
-      if (!player.grounded) return 'jump';
+      if (!player.grounded) return 'jumpForward';
       if (player.sliding) return 'slide';
       if (world.speed < world.baseSpeed + 2) return 'walk';
       return 'run';
@@ -314,14 +328,15 @@
       const frameDurationMap = {
         walk: 9,
         run: 6,
+        jumpForward: 6,
         slide: 7,
-        jump: 12,
+        jumpUp: 12,
       };
 
       player.frameDuration = frameDurationMap[animName] || 7;
       player.frameTimer++;
 
-      if (animName === 'jump') {
+      if (animName === 'jumpUp') {
         player.frameIndex = player.vy < 0 ? 0 : Math.min(1, frames.length - 1);
         return;
       }
@@ -372,6 +387,7 @@
       for (const mark of groundMarks) {
         mark.x -= world.speed;
       }
+
       const lastMark = groundMarks[groundMarks.length - 1];
       if (lastMark && lastMark.x < world.width) {
         groundMarks.push({
@@ -379,6 +395,7 @@
           w: 20 + Math.random() * 40,
         });
       }
+
       groundMarks = groundMarks.filter(m => m.x + m.w > -10);
 
       world.spawnTimer++;
@@ -388,13 +405,37 @@
 
       for (const obs of obstacles) {
         obs.x -= world.speed;
+
+        const hitbox = player.sliding
+          ? {
+              x: player.x + 12,
+              y: player.y + 20,
+              w: 52,
+              h: 34
+            }
+          : !player.grounded
+          ? {
+              x: player.x + 14,
+              y: player.y + 12,
+              w: 48,
+              h: 72
+            }
+          : {
+              x: player.x + 16,
+              y: player.y + 8,
+              w: 42,
+              h: 86
+            };
+
         if (!obs.counted && obs.x + obs.w < player.x) {
           obs.counted = true;
         }
-        if (rectsCollide(player, obs)) {
+
+        if (rectsCollide(hitbox, obs)) {
           world.gameOver = true;
         }
       }
+
       obstacles = obstacles.filter(obs => obs.x + obs.w > -20);
 
       for (const p of dust) {
@@ -403,6 +444,7 @@
         p.vy += 0.08;
         p.life -= 1;
       }
+
       dust = dust.filter(p => p.life > 0);
     }
 
@@ -447,9 +489,9 @@
       const x = player.x;
       const y = player.y;
       ctx.save();
-      ctx.fillStyle = '#d94d4d';
+      ctx.fillStyle = '#2f67d8';
       ctx.fillRect(x + 8, y + 10, 44, player.h - 14);
-      ctx.fillStyle = '#ff6b6b';
+      ctx.fillStyle = '#4f8fff';
       ctx.fillRect(x + 4, y + 6, 52, player.h - 16);
       ctx.fillStyle = '#222';
       ctx.fillRect(x + 34, y + 18, 5, 5);
@@ -459,6 +501,7 @@
     function drawSpritePlayer() {
       const animName = getAnimationName();
       const frames = spriteConfig[animName];
+
       if (!frames || !frames.length) {
         drawFallbackPlayer();
         return;
@@ -467,8 +510,24 @@
       const frame = frames[player.frameIndex % frames.length];
       const drawW = frame.w * spriteConfig.drawScale;
       const drawH = frame.h * spriteConfig.drawScale;
-      const drawX = player.x - 10;
-      const drawY = world.groundY - drawH;
+
+      let drawX = player.x - 8;
+      let drawY = world.groundY - drawH;
+
+      if (animName === 'slide') {
+        drawX = player.x - 6;
+        drawY = world.groundY - drawH + 2;
+      }
+
+      if (animName === 'jumpForward') {
+        drawX = player.x - 4;
+        drawY = world.groundY - drawH - 2;
+      }
+
+      if (animName === 'jumpUp') {
+        drawX = player.x - 4;
+        drawY = world.groundY - drawH;
+      }
 
       ctx.drawImage(
         spriteSheet,
@@ -491,6 +550,7 @@
         ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
         ctx.fillStyle = '#666';
         ctx.fillRect(obs.x, obs.y, obs.w, 6);
+
         if (obs.h > 60) {
           ctx.fillStyle = '#5a8f3d';
           ctx.fillRect(obs.x - 4, obs.y + 8, obs.w + 8, 8);
@@ -548,6 +608,7 @@
 
     function onKeyDown(e) {
       const key = e.key.toLowerCase();
+
       if (key === ' ' || key === 'arrowup' || key === 'w') {
         e.preventDefault();
         jump();
