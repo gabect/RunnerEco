@@ -1,643 +1,235 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Runner Horizontal Infinito</title>
+  <title>Horizontal Runner Game</title>
   <style>
-    * { box-sizing: border-box; }
-
-    :root {
-      --bg1: #dff3ff;
-      --bg2: #9fd3ff;
-      --ground: #3f7d3b;
-      --ground-dark: #2d5d2a;
-      --text: #1b1b1b;
-      --panel: rgba(255,255,255,0.86);
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
 
     body {
-      margin: 0;
-      font-family: Arial, Helvetica, sans-serif;
-      background: linear-gradient(180deg, var(--bg1), var(--bg2));
+      min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
-      color: var(--text);
-      overflow: hidden;
+      background: #101827;
+      font-family: Arial, sans-serif;
+      color: white;
     }
 
-    .wrap {
-      width: min(1000px, 96vw);
+    .game-wrapper {
+      text-align: center;
     }
 
-    .hud {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 16px;
+    h1 {
       margin-bottom: 12px;
-      padding: 10px 14px;
-      background: var(--panel);
-      border-radius: 12px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.08);
-      user-select: none;
-      flex-wrap: wrap;
-    }
-
-    .hud strong {
-      font-size: 1rem;
-    }
-
-    .hint {
-      font-size: 0.95rem;
-      opacity: 0.85;
+      font-size: 28px;
     }
 
     canvas {
-      width: 100%;
-      height: auto;
+      background: linear-gradient(#1e3a5f, #72b7e8);
+      border: 4px solid white;
+      border-radius: 12px;
       display: block;
-      border-radius: 16px;
-      box-shadow: 0 14px 30px rgba(0,0,0,0.16);
-      background: linear-gradient(180deg, #dff3ff 0%, #aee0ff 65%, #8fd0ff 100%);
+    }
+
+    .instructions {
+      margin-top: 12px;
+      font-size: 16px;
+      color: #d7e4f2;
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="hud">
-      <strong id="score">Puntos: 0</strong>
-      <div class="hint">Espacio / ↑ = saltar · ↓ = deslizar · R = reiniciar</div>
-      <strong id="speed">Velocidad: 1.0x</strong>
-    </div>
-    <canvas id="game" width="1000" height="420"></canvas>
+  <div class="game-wrapper">
+    <h1>Horizontal Runner</h1>
+    <canvas id="gameCanvas" width="900" height="450"></canvas>
+    <p class="instructions">Press SPACE or ↑ to jump. Press R to restart.</p>
   </div>
 
   <script>
-    const canvas = document.getElementById('game');
-    const ctx = canvas.getContext('2d');
-    const scoreEl = document.getElementById('score');
-    const speedEl = document.getElementById('speed');
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
 
-    const world = {
-      width: canvas.width,
-      height: canvas.height,
-      groundY: 335,
-      gravity: 0.78,
-      baseSpeed: 6,
-      speed: 6,
-      maxSpeed: 16,
-      distance: 0,
-      score: 0,
-      gameOver: false,
-      time: 0,
-      spawnTimer: 0,
-      nextSpawnIn: 90,
-    };
+    const gravity = 0.8;
+    const groundHeight = 80;
+    const groundY = canvas.height - groundHeight;
 
-    const input = {
-      slideHeld: false,
-    };
+    let gameRunning = true;
+    let score = 0;
+    let speed = 6;
+    let frame = 0;
 
     const player = {
-      x: 130,
-      y: 0,
-      w: 74,
-      h: 98,
-      normalH: 98,
-      slideH: 54,
-      vy: 0,
-      jumpForce: -15,
-      grounded: true,
-      sliding: false,
-      slideTimer: 0,
-      maxSlideTime: 28,
-      frameIndex: 0,
-      frameTimer: 0,
-      frameDuration: 7,
+      x: 100,
+      y: groundY - 50,
+      width: 50,
+      height: 50,
+      velocityY: 0,
+      jumpPower: -16,
+      onGround: true
     };
 
-    player.y = world.groundY - player.h;
-
-    let obstacles = [];
-    let clouds = createClouds();
-    let dust = [];
-    let groundMarks = createGroundMarks();
-
-    const spriteSheet = new Image();
-    spriteSheet.src = 'assets/player_sheet.png';
-    let spriteReady = false;
-    spriteSheet.onload = () => { spriteReady = true; };
-    spriteSheet.onerror = () => { spriteReady = false; };
-
-    const spriteConfig = {
-      drawScale: 0.50,
-
-      walk: [
-        { x: 35,  y: 30,  w: 150, h: 250 },
-        { x: 230, y: 30,  w: 150, h: 250 },
-        { x: 430, y: 30,  w: 170, h: 250 },
-        { x: 635, y: 30,  w: 170, h: 250 },
-        { x: 835, y: 30,  w: 170, h: 250 },
-      ],
-
-      run: [
-        { x: 25,  y: 340, w: 180, h: 255 },
-        { x: 225, y: 340, w: 180, h: 255 },
-        { x: 430, y: 340, w: 180, h: 255 },
-        { x: 635, y: 340, w: 180, h: 255 },
-        { x: 835, y: 340, w: 180, h: 255 },
-      ],
-
-      jumpForward: [
-        { x: 40,  y: 660, w: 180, h: 210 },
-        { x: 250, y: 660, w: 180, h: 210 },
-        { x: 465, y: 660, w: 180, h: 210 },
-        { x: 675, y: 660, w: 180, h: 210 },
-      ],
-
-      slide: [
-        { x: 35,  y: 975, w: 220, h: 175 },
-        { x: 255, y: 975, w: 220, h: 175 },
-        { x: 480, y: 975, w: 220, h: 175 },
-        { x: 705, y: 975, w: 220, h: 175 },
-      ],
-
-      jumpUp: [
-        { x: 255, y: 1265, w: 170, h: 235 },
-        { x: 565, y: 1265, w: 170, h: 235 },
-      ]
+    const obstacle = {
+      x: canvas.width + 100,
+      y: groundY - 45,
+      width: 40,
+      height: 45
     };
 
-    function createClouds() {
-      const items = [];
-      for (let i = 0; i < 7; i++) {
-        items.push({
-          x: Math.random() * world.width,
-          y: 40 + Math.random() * 120,
-          w: 60 + Math.random() * 90,
-          h: 20 + Math.random() * 18,
-          speedFactor: 0.2 + Math.random() * 0.35,
-        });
-      }
-      return items;
-    }
-
-    function createGroundMarks() {
-      const items = [];
-      let x = 0;
-      while (x < world.width + 200) {
-        const w = 25 + Math.random() * 35;
-        items.push({ x, w });
-        x += 45 + Math.random() * 55;
-      }
-      return items;
-    }
-
-    function resetGame() {
-      world.speed = world.baseSpeed;
-      world.distance = 0;
-      world.score = 0;
-      world.gameOver = false;
-      world.time = 0;
-      world.spawnTimer = 0;
-      world.nextSpawnIn = 75 + Math.random() * 35;
-
-      player.w = 74;
-      player.h = player.normalH;
-      player.y = world.groundY - player.h;
-      player.vy = 0;
-      player.grounded = true;
-      player.sliding = false;
-      player.slideTimer = 0;
-      player.frameIndex = 0;
-      player.frameTimer = 0;
-
-      obstacles = [];
-      dust = [];
-      groundMarks = createGroundMarks();
-      updateHud();
-    }
+    const clouds = [
+      { x: 150, y: 70, size: 40 },
+      { x: 500, y: 110, size: 30 },
+      { x: 800, y: 60, size: 45 }
+    ];
 
     function jump() {
-      if (world.gameOver) {
-        resetGame();
-        return;
-      }
-
-      if (player.grounded && !player.sliding) {
-        player.vy = player.jumpForce;
-        player.grounded = false;
-        player.frameIndex = 0;
-        player.frameTimer = 0;
-
-        for (let i = 0; i < 7; i++) {
-          dust.push({
-            x: player.x + player.w * 0.4,
-            y: world.groundY - 4,
-            vx: -2 - Math.random() * 3,
-            vy: -1 - Math.random() * 2,
-            life: 24 + Math.random() * 10,
-            size: 3 + Math.random() * 3,
-          });
-        }
+      if (player.onGround && gameRunning) {
+        player.velocityY = player.jumpPower;
+        player.onGround = false;
       }
     }
 
-    function startSlide() {
-      if (world.gameOver) {
-        resetGame();
-        return;
+    function restartGame() {
+      gameRunning = true;
+      score = 0;
+      speed = 6;
+      frame = 0;
+
+      player.y = groundY - player.height;
+      player.velocityY = 0;
+      player.onGround = true;
+
+      obstacle.x = canvas.width + 100;
+    }
+
+    document.addEventListener("keydown", function(event) {
+      if (event.code === "Space" || event.code === "ArrowUp") {
+        jump();
       }
 
-      if (!player.grounded || player.sliding) return;
-      player.sliding = true;
-      player.slideTimer = player.maxSlideTime;
-      player.h = player.slideH;
-      player.y = world.groundY - player.h;
-      player.frameIndex = 0;
-      player.frameTimer = 0;
-    }
-
-    function stopSlide() {
-      if (!player.sliding) return;
-      player.sliding = false;
-      player.h = player.normalH;
-      player.y = world.groundY - player.h;
-      player.frameIndex = 0;
-      player.frameTimer = 0;
-    }
-
-    function spawnObstacle() {
-      const typeRoll = Math.random();
-      let h, w;
-
-      if (typeRoll < 0.55) {
-        w = 24 + Math.random() * 18;
-        h = 38 + Math.random() * 36;
-      } else if (typeRoll < 0.85) {
-        w = 42 + Math.random() * 30;
-        h = 28 + Math.random() * 28;
-      } else {
-        w = 18 + Math.random() * 12;
-        h = 70 + Math.random() * 34;
+      if (event.code === "KeyR") {
+        restartGame();
       }
+    });
 
-      obstacles.push({
-        x: world.width + 30,
-        y: world.groundY - h,
-        w,
-        h,
-        counted: false,
-      });
+    canvas.addEventListener("click", jump);
 
-      const speedFactor = Math.min((world.speed - world.baseSpeed) * 3.5, 55);
-      world.nextSpawnIn = 55 + Math.random() * 55 - speedFactor;
-      world.nextSpawnIn = Math.max(34, world.nextSpawnIn);
-      world.spawnTimer = 0;
-    }
-
-    function updateHud() {
-      scoreEl.textContent = `Puntos: ${world.score}`;
-      speedEl.textContent = `Velocidad: ${(world.speed / world.baseSpeed).toFixed(1)}x`;
-    }
-
-    function rectsCollide(a, b) {
+    function isColliding(a, b) {
       return (
-        a.x < b.x + b.w &&
-        a.x + a.w > b.x &&
-        a.y < b.y + b.h &&
-        a.y + a.h > b.y
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
       );
-    }
-
-    function getAnimationName() {
-      if (!player.grounded) return 'jumpForward';
-      if (player.sliding) return 'slide';
-      if (world.speed < world.baseSpeed + 2) return 'walk';
-      return 'run';
-    }
-
-    function updateAnimation() {
-      const animName = getAnimationName();
-      const frames = spriteConfig[animName];
-      if (!frames || !frames.length) return;
-
-      const frameDurationMap = {
-        walk: 9,
-        run: 6,
-        jumpForward: 6,
-        slide: 7,
-        jumpUp: 12,
-      };
-
-      player.frameDuration = frameDurationMap[animName] || 7;
-      player.frameTimer++;
-
-      if (animName === 'jumpUp') {
-        player.frameIndex = player.vy < 0 ? 0 : Math.min(1, frames.length - 1);
-        return;
-      }
-
-      if (player.frameTimer >= player.frameDuration) {
-        player.frameTimer = 0;
-        player.frameIndex = (player.frameIndex + 1) % frames.length;
-      }
     }
 
     function update() {
-      world.time++;
-      if (world.gameOver) return;
+      if (!gameRunning) return;
 
-      world.distance += world.speed;
-      world.score = Math.floor(world.distance / 12);
-      world.speed = Math.min(world.maxSpeed, world.baseSpeed + world.score / 180);
-      updateHud();
+      frame++;
 
-      if (player.sliding) {
-        player.slideTimer--;
-        if (player.slideTimer <= 0 || !input.slideHeld) {
-          stopSlide();
+      player.velocityY += gravity;
+      player.y += player.velocityY;
+
+      if (player.y >= groundY - player.height) {
+        player.y = groundY - player.height;
+        player.velocityY = 0;
+        player.onGround = true;
+      }
+
+      obstacle.x -= speed;
+
+      if (obstacle.x + obstacle.width < 0) {
+        obstacle.x = canvas.width + Math.random() * 300 + 100;
+        score++;
+
+        if (speed < 13) {
+          speed += 0.3;
         }
       }
 
-      player.vy += world.gravity;
-      player.y += player.vy;
-
-      if (player.y >= world.groundY - player.h) {
-        player.y = world.groundY - player.h;
-        player.vy = 0;
-        player.grounded = true;
-      } else {
-        player.grounded = false;
-      }
-
-      updateAnimation();
-
-      for (const cloud of clouds) {
-        cloud.x -= world.speed * cloud.speedFactor;
-        if (cloud.x + cloud.w < 0) {
-          cloud.x = world.width + Math.random() * 180;
-          cloud.y = 35 + Math.random() * 130;
+      clouds.forEach(cloud => {
+        cloud.x -= speed * 0.25;
+        if (cloud.x < -100) {
+          cloud.x = canvas.width + 100;
+          cloud.y = Math.random() * 100 + 30;
         }
-      }
+      });
 
-      for (const mark of groundMarks) {
-        mark.x -= world.speed;
-      }
-
-      const lastMark = groundMarks[groundMarks.length - 1];
-      if (lastMark && lastMark.x < world.width) {
-        groundMarks.push({
-          x: lastMark.x + 50 + Math.random() * 65,
-          w: 20 + Math.random() * 40,
-        });
-      }
-
-      groundMarks = groundMarks.filter(m => m.x + m.w > -10);
-
-      world.spawnTimer++;
-      if (world.spawnTimer >= world.nextSpawnIn) {
-        spawnObstacle();
-      }
-
-      for (const obs of obstacles) {
-        obs.x -= world.speed;
-
-        const hitbox = player.sliding
-          ? {
-              x: player.x + 12,
-              y: player.y + 20,
-              w: 52,
-              h: 34
-            }
-          : !player.grounded
-          ? {
-              x: player.x + 14,
-              y: player.y + 12,
-              w: 48,
-              h: 72
-            }
-          : {
-              x: player.x + 16,
-              y: player.y + 8,
-              w: 42,
-              h: 86
-            };
-
-        if (!obs.counted && obs.x + obs.w < player.x) {
-          obs.counted = true;
-        }
-
-        if (rectsCollide(hitbox, obs)) {
-          world.gameOver = true;
-        }
-      }
-
-      obstacles = obstacles.filter(obs => obs.x + obs.w > -20);
-
-      for (const p of dust) {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.08;
-        p.life -= 1;
-      }
-
-      dust = dust.filter(p => p.life > 0);
-    }
-
-    function drawBackground() {
-      const sky = ctx.createLinearGradient(0, 0, 0, world.height);
-      sky.addColorStop(0, '#dff3ff');
-      sky.addColorStop(0.7, '#a8ddff');
-      sky.addColorStop(1, '#89ceff');
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, world.width, world.height);
-
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      for (const cloud of clouds) {
-        drawCloud(cloud.x, cloud.y, cloud.w, cloud.h);
-      }
-
-      ctx.fillStyle = '#8ac56d';
-      ctx.fillRect(0, world.groundY - 18, world.width, 18);
-
-      ctx.fillStyle = '#3f7d3b';
-      ctx.fillRect(0, world.groundY, world.width, world.height - world.groundY);
-
-      ctx.fillStyle = '#2d5d2a';
-      ctx.fillRect(0, world.groundY + 16, world.width, 6);
-
-      ctx.fillStyle = '#7c5a3b';
-      for (const mark of groundMarks) {
-        ctx.fillRect(mark.x, world.groundY + 7, mark.w, 4);
+      if (isColliding(player, obstacle)) {
+        gameRunning = false;
       }
     }
 
-    function drawCloud(x, y, w, h) {
+    function drawCloud(x, y, size) {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
       ctx.beginPath();
-      ctx.ellipse(x, y, w * 0.22, h * 0.7, 0, 0, Math.PI * 2);
-      ctx.ellipse(x + w * 0.24, y - h * 0.18, w * 0.2, h * 0.8, 0, 0, Math.PI * 2);
-      ctx.ellipse(x + w * 0.48, y, w * 0.24, h * 0.76, 0, 0, Math.PI * 2);
-      ctx.ellipse(x + w * 0.72, y + h * 0.05, w * 0.18, h * 0.58, 0, 0, Math.PI * 2);
+      ctx.arc(x, y, size * 0.5, 0, Math.PI * 2);
+      ctx.arc(x + size * 0.5, y - size * 0.2, size * 0.45, 0, Math.PI * 2);
+      ctx.arc(x + size, y, size * 0.5, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    function drawFallbackPlayer() {
-      const x = player.x;
-      const y = player.y;
-      ctx.save();
-      ctx.fillStyle = '#2f67d8';
-      ctx.fillRect(x + 8, y + 10, 44, player.h - 14);
-      ctx.fillStyle = '#4f8fff';
-      ctx.fillRect(x + 4, y + 6, 52, player.h - 16);
-      ctx.fillStyle = '#222';
-      ctx.fillRect(x + 34, y + 18, 5, 5);
-      ctx.restore();
-    }
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    function drawSpritePlayer() {
-      const animName = getAnimationName();
-      const frames = spriteConfig[animName];
+      const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      sky.addColorStop(0, "#1e3a5f");
+      sky.addColorStop(1, "#72b7e8");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      if (!frames || !frames.length) {
-        drawFallbackPlayer();
-        return;
+      clouds.forEach(cloud => drawCloud(cloud.x, cloud.y, cloud.size));
+
+      ctx.fillStyle = "#2d6a4f";
+      ctx.fillRect(0, groundY, canvas.width, groundHeight);
+
+      ctx.fillStyle = "#1b4332";
+      for (let i = 0; i < canvas.width; i += 40) {
+        const offset = (frame * speed) % 40;
+        ctx.fillRect(i - offset, groundY + 10, 20, 5);
       }
 
-      const frame = frames[player.frameIndex % frames.length];
-      const drawW = frame.w * spriteConfig.drawScale;
-      const drawH = frame.h * spriteConfig.drawScale;
+      ctx.fillStyle = "#38bdf8";
+      ctx.fillRect(player.x, player.y, player.width, player.height);
 
-      let drawX = player.x - 8;
-      let drawY = world.groundY - drawH;
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(player.x + 32, player.y + 12, 8, 8);
 
-      if (animName === 'slide') {
-        drawX = player.x - 6;
-        drawY = world.groundY - drawH + 2;
-      }
+      ctx.fillStyle = "#ef4444";
+      ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
 
-      if (animName === 'jumpForward') {
-        drawX = player.x - 4;
-        drawY = world.groundY - drawH - 2;
-      }
+      ctx.fillStyle = "white";
+      ctx.font = "28px Arial";
+      ctx.fillText("Score: " + score, 25, 40);
 
-      if (animName === 'jumpUp') {
-        drawX = player.x - 4;
-        drawY = world.groundY - drawH;
-      }
+      if (!gameRunning) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      ctx.drawImage(
-        spriteSheet,
-        frame.x, frame.y, frame.w, frame.h,
-        drawX, drawY, drawW, drawH
-      );
-    }
+        ctx.fillStyle = "white";
+        ctx.font = "48px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 20);
 
-    function drawPlayer() {
-      if (spriteReady) {
-        drawSpritePlayer();
-      } else {
-        drawFallbackPlayer();
+        ctx.font = "24px Arial";
+        ctx.fillText("Press R to restart", canvas.width / 2, canvas.height / 2 + 25);
+        ctx.textAlign = "left";
       }
     }
 
-    function drawObstacles() {
-      for (const obs of obstacles) {
-        ctx.fillStyle = '#444';
-        ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
-        ctx.fillStyle = '#666';
-        ctx.fillRect(obs.x, obs.y, obs.w, 6);
-
-        if (obs.h > 60) {
-          ctx.fillStyle = '#5a8f3d';
-          ctx.fillRect(obs.x - 4, obs.y + 8, obs.w + 8, 8);
-          ctx.fillRect(obs.x - 2, obs.y + 22, obs.w + 4, 7);
-        }
-      }
-    }
-
-    function drawDust() {
-      for (const p of dust) {
-        ctx.globalAlpha = Math.max(0, p.life / 30);
-        ctx.fillStyle = '#8b6d4f';
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    function drawOverlay() {
-      if (!world.gameOver) return;
-
-      ctx.fillStyle = 'rgba(0,0,0,0.28)';
-      ctx.fillRect(0, 0, world.width, world.height);
-
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.fillRect(world.width / 2 - 210, world.height / 2 - 70, 420, 140);
-
-      ctx.fillStyle = '#111';
-      ctx.textAlign = 'center';
-      ctx.font = 'bold 38px Arial';
-      ctx.fillText('Fin de la partida', world.width / 2, world.height / 2 - 14);
-
-      ctx.font = '24px Arial';
-      ctx.fillText(`Puntuación: ${world.score}`, world.width / 2, world.height / 2 + 24);
-
-      ctx.font = '18px Arial';
-      ctx.fillText('Presiona R, Espacio, ↑ o clic para reiniciar', world.width / 2, world.height / 2 + 54);
-    }
-
-    function render() {
-      ctx.clearRect(0, 0, world.width, world.height);
-      drawBackground();
-      drawDust();
-      drawObstacles();
-      drawPlayer();
-      drawOverlay();
-    }
-
-    function loop() {
+    function gameLoop() {
       update();
-      render();
-      requestAnimationFrame(loop);
+      draw();
+      requestAnimationFrame(gameLoop);
     }
 
-    function onKeyDown(e) {
-      const key = e.key.toLowerCase();
-
-      if (key === ' ' || key === 'arrowup' || key === 'w') {
-        e.preventDefault();
-        jump();
-      } else if (key === 'arrowdown' || key === 's') {
-        e.preventDefault();
-        input.slideHeld = true;
-        startSlide();
-      } else if (key === 'r') {
-        resetGame();
-      }
-    }
-
-    function onKeyUp(e) {
-      const key = e.key.toLowerCase();
-      if (key === 'arrowdown' || key === 's') {
-        input.slideHeld = false;
-      }
-    }
-
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    canvas.addEventListener('mousedown', jump);
-    canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      jump();
-    }, { passive: false });
-
-    updateHud();
-    loop();
+    gameLoop();
   </script>
 </body>
 </html>
